@@ -1,53 +1,32 @@
-# Prerequisites
-*.d
-
-# Object files
+# Build output
 *.o
-*.ko
-*.obj
-*.elf
-
-# Linker output
-*.ilk
-*.map
-*.exp
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Libraries
-*.lib
-*.a
-*.la
-*.lo
-
-# Shared objects (inc. Windows DLLs)
-*.dll
-*.so
-*.so.*
-*.dylib
-
-# Executables
-*.exe
-*.out
-*.app
-*.i*86
-*.x86_64
-*.hex
 *.bin
+*.elf
+*.dis
+kernel.bin
+os-image.bin
 
-# Debug files
-*.dSYM/
-*.su
-*.idb
-*.pdb
+# Disk images
+disk.img
+*.img
+*.iso
 
-# Kernel Module Compile Results
-*.mod*
-*.cmd
-.tmp_versions/
-modules.order
-Module.symvers
-Mkfile.old
-dkms.conf
+# Object files in project folders
+kernel/*.o
+boot/*.o
+drivers/*.o
+cpu/*.o
+libc/*.o
+
+# Generated boot binaries
+boot/*.bin
+
+# Editor files
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS / temporary files
+.DS_Store
+Thumbs.db
