@@ -14,7 +14,7 @@
 #include "../libc/ramfs.h"
 #include "../libc/simplefs.h"
 
-#define OS_VERSION "2.0"
+#define OS_VERSION "2.1"
 #define INPUT_SIZE 256
 #define SCRIPT_MAX_DEPTH 2
 
@@ -26,6 +26,12 @@ static int calc_last_answer = 0;
 static unsigned int random_seed = 12345;
 static char editor_filename[RAMFS_NAME_SIZE];
 static int script_depth = 0;
+static char script_last_name[RAMFS_NAME_SIZE];
+static int script_last_command_count = 0;
+static int script_last_result = 0;
+static int script_total_runs = 0;
+static u32 script_last_start_ticks = 0;
+static u32 script_last_end_ticks = 0;
 
 void user_input(char *input);
 
@@ -386,7 +392,8 @@ static void print_help() {
     kprint("TICKS, UPTIME, MEMORY, MEMMAP, PAGING, PAGE ADDRESS\n");
     kprint("HEAP, HEAP BLOCKS, HEAP RESET, ALLOC N, FREE ADDRESS\n");
     kprint("DISKINFO, FORMATFS, SAVEFS, LOADFS\n");
-    kprint("FS, FS RESET, LS, LS -L, TOUCH, WRITE, APPEND, CAT, EDIT, RUNFILE\n");
+    kprint("FS, FS RESET, FS SAVE, FS LOAD, FS FORMAT, LS, LS -L, TOUCH, WRITE, APPEND, CAT\n");
+    kprint("SCRIPT HELP/STATUS/DEMO/RUN FILE, RUNFILE FILE, EDIT\n");
     kprint("SIZE, RENAME, COPY, EXISTS, CLEARFILE, RM\n");
     kprint("NOTE LIST/SAVE/OPEN/APPEND/DELETE, COLOR NAME\n");
     kprint("CALC, NOTES, FILES, EDITOR FILE\n");
@@ -932,15 +939,51 @@ static void command_fs(char *args) {
         return;
     }
 
-    kprint("RAM filesystem info:\nMax files: ");
+    if (strcmp_ignore_case(args, "SAVE") == 0 ||
+        strcmp_ignore_case(args, "WRITE") == 0) {
+        command_savefs();
+        return;
+    }
+
+    if (strcmp_ignore_case(args, "LOAD") == 0 ||
+        strcmp_ignore_case(args, "READ") == 0) {
+        command_loadfs();
+        return;
+    }
+
+    if (strcmp_ignore_case(args, "FORMAT") == 0 ||
+        strcmp_ignore_case(args, "FORMATFS") == 0) {
+        command_formatfs();
+        return;
+    }
+
+    if (strcmp_ignore_case(args, "HELP") == 0) {
+        kprint("FS command help:\n");
+        kprint("FS              - Show RAM filesystem info\n");
+        kprint("FS RESET        - Clear RAM files\n");
+        kprint("FS SAVE         - Save RAM files to disk.img\n");
+        kprint("FS LOAD         - Load RAM files from disk.img\n");
+        kprint("FS FORMAT       - Format SimpleFS area on disk.img\n");
+        kprint("LS / LS -L      - List RAM files\n");
+        kprint("WRITE FILE TXT  - Write RAM file\n");
+        kprint("RUNFILE FILE    - Run script file\n");
+        return;
+    }
+
+    kprint("RAM filesystem info:\n");
+    kprint("Max files: ");
     print_int(RAMFS_MAX_FILES);
-    kprint("\nFilename size: ");
+    kprint("\n");
+    kprint("Filename size: ");
     print_int(RAMFS_NAME_SIZE - 1);
-    kprint(" chars\nFile content size: ");
+    kprint(" chars\n");
+    kprint("File content size: ");
     print_int(RAMFS_CONTENT_SIZE - 1);
-    kprint(" chars\nFiles used: ");
+    kprint(" chars\n");
+    kprint("Files used: ");
     print_int(ramfs_file_count());
-    kprint("\nPersistent storage: use SAVEFS and LOADFS\n");
+    kprint("\n");
+    kprint("Persistent commands: FS SAVE, FS LOAD, FS FORMAT\n");
 }
 
 static void command_ls_short() {
@@ -1431,7 +1474,13 @@ static void run_script_command(char command[]) {
         return;
     }
 
+    if (command[0] == '#') {
+        return;
+    }
+
     copy_string_limited(local_command, command, INPUT_SIZE);
+
+    script_last_command_count++;
 
     kprint_colored("\n$ ", LIGHT_GREY_ON_BLACK);
     kprint_colored(local_command, LIGHT_GREY_ON_BLACK);
@@ -1452,11 +1501,13 @@ static void command_runfile(char *args) {
 
     if (filename[0] == '\0') {
         kprint("Usage: RUNFILE FILE\n");
+        script_last_result = 0;
         return;
     }
 
     if (script_depth >= SCRIPT_MAX_DEPTH) {
         kprint("Script nesting limit reached.\n");
+        script_last_result = 0;
         return;
     }
 
@@ -1464,10 +1515,18 @@ static void command_runfile(char *args) {
 
     if (content == 0) {
         kprint("Script file not found.\n");
+        copy_string_limited(script_last_name, filename, RAMFS_NAME_SIZE);
+        script_last_command_count = 0;
+        script_last_result = 0;
         return;
     }
 
     copy_string_limited(script, content, RAMFS_CONTENT_SIZE);
+    copy_string_limited(script_last_name, filename, RAMFS_NAME_SIZE);
+
+    script_last_command_count = 0;
+    script_last_result = 0;
+    script_last_start_ticks = get_timer_ticks();
 
     kprint("Running script: ");
     kprint(filename);
@@ -1476,7 +1535,7 @@ static void command_runfile(char *args) {
     script_depth++;
 
     while (script[i] != '\0') {
-        if (script[i] == ';') {
+        if (script[i] == ';' || script[i] == '\n') {
             command[j] = '\0';
             run_script_command(command);
             j = 0;
@@ -1491,8 +1550,113 @@ static void command_runfile(char *args) {
     run_script_command(command);
 
     script_depth--;
-    kprint("Script finished.\n");
+
+    script_last_end_ticks = get_timer_ticks();
+    script_last_result = 1;
+    script_total_runs++;
+
+    kprint("Script finished. Commands executed: ");
+    print_int(script_last_command_count);
+    kprint("\n");
 }
+
+static void command_script_status() {
+    kprint("Script runner status:\n");
+
+    kprint("Last script: ");
+    if (script_last_name[0] == '\0') {
+        kprint("none\n");
+    } else {
+        kprint(script_last_name);
+        kprint("\n");
+    }
+
+    kprint("Last result: ");
+    if (script_last_result) {
+        kprint("success\n");
+    } else {
+        kprint("none/failed\n");
+    }
+
+    kprint("Last command count: ");
+    print_int(script_last_command_count);
+    kprint("\n");
+
+    kprint("Total script runs: ");
+    print_int(script_total_runs);
+    kprint("\n");
+
+    kprint("Last start ticks: ");
+    print_uint(script_last_start_ticks);
+    kprint("\n");
+
+    kprint("Last end ticks: ");
+    print_uint(script_last_end_ticks);
+    kprint("\n");
+}
+
+static void command_script_help() {
+    kprint("Script command help:\n");
+    kprint("RUNFILE FILE          - Run semicolon/newline separated commands from RAM file\n");
+    kprint("SCRIPT FILE           - Alias for RUNFILE FILE\n");
+    kprint("SCRIPT RUN FILE       - Run script file\n");
+    kprint("SCRIPT STATUS         - Show script runner status\n");
+    kprint("SCRIPT DEMO           - Create demo script file named demo\n");
+    kprint("SCRIPT HELP           - Show this help\n");
+    kprint("\nExample:\n");
+    kprint("WRITE demo VERSION; PROGRAMS; RUNPROG HELLO Ahmad; RUNPROG CLOCK; PS\n");
+    kprint("RUNFILE demo\n");
+}
+
+static void command_script_demo() {
+    int result;
+
+    result = ramfs_write("demo", "version; sysinfo; programs; runprog hello Ahmad; runprog clock; ps");
+
+    if (result == -1) {
+        ramfs_create("demo");
+        result = ramfs_write("demo", "version; sysinfo; programs; runprog hello Ahmad; runprog clock; ps");
+    }
+
+    if (result == 1) {
+        kprint("Demo script saved as RAM file: demo\n");
+        kprint("Run it with: RUNFILE demo\n");
+    } else {
+        kprint("Could not create demo script.\n");
+    }
+}
+
+static void command_script(char *args) {
+    char subcommand[32];
+    char *script_args;
+
+    script_args = read_word(args, subcommand, 32);
+    script_args = skip_spaces_local(script_args);
+
+    if (subcommand[0] == '\0' ||
+        strcmp_ignore_case(subcommand, "HELP") == 0) {
+        command_script_help();
+        return;
+    }
+
+    if (strcmp_ignore_case(subcommand, "STATUS") == 0) {
+        command_script_status();
+        return;
+    }
+
+    if (strcmp_ignore_case(subcommand, "DEMO") == 0) {
+        command_script_demo();
+        return;
+    }
+
+    if (strcmp_ignore_case(subcommand, "RUN") == 0) {
+        command_runfile(script_args);
+        return;
+    }
+
+    command_runfile(args);
+}
+
 
 static void command_run(char *args) {
     char app[32];
@@ -1913,8 +2077,12 @@ void user_input(char *input) {
         command_cat(args);
     } else if (strcmp_ignore_case(command, "EDIT") == 0 || strcmp_ignore_case(command, "EDITOR") == 0) {
         start_editor(args);
-    } else if (strcmp_ignore_case(command, "RUNFILE") == 0 || strcmp_ignore_case(command, "SCRIPT") == 0) {
+    } else if (strcmp_ignore_case(command, "RUNFILE") == 0) {
         command_runfile(args);
+    } else if (strcmp_ignore_case(command, "SCRIPT") == 0) {
+        command_script(args);
+    } else if (strcmp_ignore_case(command, "MKFS") == 0) {
+        command_formatfs();
     } else if (strcmp_ignore_case(command, "SIZE") == 0) {
         command_size(args);
     } else if (strcmp_ignore_case(command, "RENAME") == 0 || strcmp_ignore_case(command, "MV") == 0) {
@@ -2001,7 +2169,7 @@ void main() {
     kprint("Safe syscall dispatcher initialized.\n");
     kprint("App manager initialized.\n");
     kprint("Editor app initialized.\n");
-    kprint("Script runner initialized.\n");
+    kprint("Script runner v2 initialized.\n");
     kprint("Program manager v2 initialized.\n");
     kprint("Process manager v1 initialized.\n");
     kprint("Type HELP to see available commands.");
