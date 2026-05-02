@@ -8,13 +8,12 @@
 #include "../cpu/ports.h"
 #include "kernel.h"
 #include "programs.h"
-#include "process.h"
 #include "../libc/string.h"
 #include "../libc/heap.h"
 #include "../libc/ramfs.h"
 #include "../libc/simplefs.h"
 
-#define OS_VERSION "2.0"
+#define OS_VERSION "1.8"
 #define INPUT_SIZE 256
 #define SCRIPT_MAX_DEPTH 2
 
@@ -379,9 +378,7 @@ static void print_help() {
     kprint_colored("Available commands:\n", YELLOW_ON_BLACK);
 
     kprint("HELP, APPS, RUN APP, CLEAR, VERSION, ABOUT, BANNER, SYSINFO\n");
-    kprint("PROGRAMS, PROGS, PROGRAM HELP, PROGRAM COUNT, PROGRAM STATUS\n");
-    kprint("PROGRAM INFO NAME, PROGRAM INFO ALL, RUNPROG NAME, EXEC NAME\n");
-    kprint("PS, PROCESS HELP, PROCESS LIST, PROCESS STATUS, PROCESS COUNT, PROCESS CLEAR\n");
+    kprint("PROGRAMS, PROGS, PROGRAM HELP, PROGRAM INFO NAME, RUNPROG NAME, EXEC NAME\n");
     kprint("SYSCALLS, SYSTEMCALLS, SYSCALL HELP/TEST/PRINT/TICKS/VERSION/CLEAR/INVALID\n");
     kprint("TICKS, UPTIME, MEMORY, MEMMAP, PAGING, PAGE ADDRESS\n");
     kprint("HEAP, HEAP BLOCKS, HEAP RESET, ALLOC N, FREE ADDRESS\n");
@@ -667,8 +664,7 @@ static void command_sysinfo() {
     kprint("RAM filesystem: enabled\n");
     kprint("Persistent storage: SimpleFS on QEMU IDE disk\n");
     kprint("App manager/editor/script runner: enabled\n");
-    kprint("Internal program manager: v2 enabled\n");
-    kprint("Process manager: v1 history tracking enabled\n");
+    kprint("Internal program manager: v1 enabled\n");
 }
 
 static void command_memory() {
@@ -1797,12 +1793,6 @@ void user_input(char *input) {
         if (strcmp_ignore_case(subcommand, "HELP") == 0 ||
             subcommand[0] == '\0') {
             program_help();
-        } else if (strcmp_ignore_case(subcommand, "COUNT") == 0) {
-            kprint("Program count: ");
-            print_int(program_count());
-            kprint("\n");
-        } else if (strcmp_ignore_case(subcommand, "STATUS") == 0) {
-            program_status();
         } else if (strcmp_ignore_case(subcommand, "INFO") == 0) {
             program_info(program_args);
         } else {
@@ -1818,38 +1808,6 @@ void user_input(char *input) {
         program_args = skip_spaces_local(program_args);
 
         program_run(program_name, program_args);
-
-    } else if (strcmp_ignore_case(command, "PS") == 0) {
-        process_list();
-
-    } else if (strcmp_ignore_case(command, "PROCESS") == 0 ||
-               strcmp_ignore_case(command, "PROC") == 0) {
-        char subcommand[32];
-        char *process_args;
-
-        process_args = read_word(args, subcommand, 32);
-        process_args = skip_spaces_local(process_args);
-        process_args = process_args;
-
-        if (subcommand[0] == '\0' ||
-            strcmp_ignore_case(subcommand, "HELP") == 0) {
-            process_help();
-        } else if (strcmp_ignore_case(subcommand, "LIST") == 0 ||
-                   strcmp_ignore_case(subcommand, "PS") == 0) {
-            process_list();
-        } else if (strcmp_ignore_case(subcommand, "STATUS") == 0) {
-            process_status();
-        } else if (strcmp_ignore_case(subcommand, "COUNT") == 0) {
-            kprint("Process records: ");
-            print_int(process_count());
-            kprint("\n");
-        } else if (strcmp_ignore_case(subcommand, "CLEAR") == 0 ||
-                   strcmp_ignore_case(subcommand, "RESET") == 0) {
-            process_clear();
-        } else {
-            kprint("Unknown PROCESS command. Use PROCESS HELP.\n");
-        }
-
     } else if (strcmp_ignore_case(command, "RUN") == 0) {
         command_run(args);
     } else if (strcmp_ignore_case(command, "CLEAR") == 0 || strcmp_ignore_case(command, "CLS") == 0) {
@@ -1986,7 +1944,6 @@ void main() {
     init_paging();
     disk_init();
     simplefs_init();
-    init_processes();
     init_programs();
 
     clear_screen();
@@ -2002,8 +1959,7 @@ void main() {
     kprint("App manager initialized.\n");
     kprint("Editor app initialized.\n");
     kprint("Script runner initialized.\n");
-    kprint("Program manager v2 initialized.\n");
-    kprint("Process manager v1 initialized.\n");
+    kprint("Program manager v1 initialized.\n");
     kprint("Type HELP to see available commands.");
     print_prompt();
 
