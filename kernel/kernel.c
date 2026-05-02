@@ -9,12 +9,13 @@
 #include "kernel.h"
 #include "programs.h"
 #include "process.h"
+#include "appfs.h"
 #include "../libc/string.h"
 #include "../libc/heap.h"
 #include "../libc/ramfs.h"
 #include "../libc/simplefs.h"
 
-#define OS_VERSION "2.1"
+#define OS_VERSION "2.2"
 #define INPUT_SIZE 256
 #define SCRIPT_MAX_DEPTH 2
 
@@ -387,6 +388,7 @@ static void print_help() {
     kprint("HELP, APPS, RUN APP, CLEAR, VERSION, ABOUT, BANNER, SYSINFO\n");
     kprint("PROGRAMS, PROGS, PROGRAM HELP, PROGRAM COUNT, PROGRAM STATUS\n");
     kprint("PROGRAM INFO NAME, PROGRAM INFO ALL, RUNPROG NAME, EXEC NAME\n");
+    kprint("APPSFS HELP/STATUS, RUNAPP FILE, APPINFO FILE\n");
     kprint("PS, PROCESS HELP, PROCESS LIST, PROCESS STATUS, PROCESS COUNT, PROCESS CLEAR\n");
     kprint("SYSCALLS, SYSTEMCALLS, SYSCALL HELP/TEST/PRINT/TICKS/VERSION/CLEAR/INVALID\n");
     kprint("TICKS, UPTIME, MEMORY, MEMMAP, PAGING, PAGE ADDRESS\n");
@@ -1947,6 +1949,29 @@ void user_input(char *input) {
     } else if (strcmp_ignore_case(command, "APPS") == 0) {
         print_apps();
 
+    } else if (strcmp_ignore_case(command, "APPSFS") == 0 ||
+               strcmp_ignore_case(command, "APPFS") == 0) {
+        char subcommand[32];
+        char *appfs_args;
+
+        appfs_args = read_word(args, subcommand, 32);
+        appfs_args = skip_spaces_local(appfs_args);
+
+        if (subcommand[0] == '\0' ||
+            strcmp_ignore_case(subcommand, "HELP") == 0) {
+            appfs_help();
+        } else if (strcmp_ignore_case(subcommand, "STATUS") == 0) {
+            appfs_status();
+        } else {
+            kprint("Unknown APPSFS command. Use APPSFS HELP.\n");
+        }
+
+    } else if (strcmp_ignore_case(command, "RUNAPP") == 0) {
+        appfs_run(args);
+
+    } else if (strcmp_ignore_case(command, "APPINFO") == 0) {
+        appfs_info(args);
+
     } else if (strcmp_ignore_case(command, "PROGRAMS") == 0 ||
                strcmp_ignore_case(command, "PROGS") == 0) {
         program_list();
@@ -2156,6 +2181,7 @@ void main() {
     simplefs_init();
     init_processes();
     init_programs();
+    init_appfs();
 
     clear_screen();
     print_banner();
@@ -2172,6 +2198,7 @@ void main() {
     kprint("Script runner v2 initialized.\n");
     kprint("Program manager v2 initialized.\n");
     kprint("Process manager v1 initialized.\n");
+    kprint("External RAM app runner v1 initialized.\n");
     kprint("Type HELP to see available commands.");
     print_prompt();
 
