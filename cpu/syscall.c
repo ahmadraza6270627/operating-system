@@ -1,19 +1,28 @@
 #include "syscall.h"
+#include "idt.h"
 #include "timer.h"
 #include "../drivers/screen.h"
 #include "../libc/string.h"
 
+extern void isr128();
+
 static int syscall_enabled = 0;
 
-static char syscall_version[] = "Simple_OS syscall ABI v1 safe dispatcher";
-static char syscall_mode[] = "safe kernel dispatcher";
+static char syscall_version[] = "Simple_OS syscall ABI v2 real int 0x80";
+static char syscall_mode[] = "real int 0x80 kernel-mode test path";
 
 void init_syscalls() {
     /*
-     * Safe syscall mode:
-     * Real int 0x80 is not active right now.
-     * Syscall commands call syscall_dispatch() directly.
+     * Real int 0x80 retry:
+     * IDT vector 0x80 points to isr128 in cpu/interrupt.asm.
+     * The assembly stub reads:
+     * eax = syscall number
+     * ebx = arg1
+     * ecx = arg2
+     * edx = arg3
+     * Then it calls syscall_dispatch().
      */
+    set_idt_gate(SYSCALL_INTERRUPT, (u32)isr128);
     syscall_enabled = 1;
 }
 
@@ -103,17 +112,53 @@ u32 syscall_dispatch(u32 syscall_number, u32 arg1, u32 arg2, u32 arg3) {
 }
 
 u32 syscall_call0(u32 syscall_number) {
-    return syscall_dispatch(syscall_number, 0, 0, 0);
+    u32 result;
+
+    asm volatile(
+        "int $0x80"
+        : "=a"(result)
+        : "a"(syscall_number)
+        : "memory"
+    );
+
+    return result;
 }
 
 u32 syscall_call1(u32 syscall_number, u32 arg1) {
-    return syscall_dispatch(syscall_number, arg1, 0, 0);
+    u32 result;
+
+    asm volatile(
+        "int $0x80"
+        : "=a"(result)
+        : "a"(syscall_number), "b"(arg1)
+        : "memory"
+    );
+
+    return result;
 }
 
 u32 syscall_call2(u32 syscall_number, u32 arg1, u32 arg2) {
-    return syscall_dispatch(syscall_number, arg1, arg2, 0);
+    u32 result;
+
+    asm volatile(
+        "int $0x80"
+        : "=a"(result)
+        : "a"(syscall_number), "b"(arg1), "c"(arg2)
+        : "memory"
+    );
+
+    return result;
 }
 
 u32 syscall_call3(u32 syscall_number, u32 arg1, u32 arg2, u32 arg3) {
-    return syscall_dispatch(syscall_number, arg1, arg2, arg3);
+    u32 result;
+
+    asm volatile(
+        "int $0x80"
+        : "=a"(result)
+        : "a"(syscall_number), "b"(arg1), "c"(arg2), "d"(arg3)
+        : "memory"
+    );
+
+    return result;
 }
