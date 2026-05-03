@@ -14,8 +14,9 @@
 #include "../libc/heap.h"
 #include "../libc/ramfs.h"
 #include "../libc/simplefs.h"
+#include "../cpu/usermode.h"
 
-#define OS_VERSION "2.2"
+#define OS_VERSION "2.3"
 #define INPUT_SIZE 256
 #define SCRIPT_MAX_DEPTH 2
 
@@ -401,6 +402,7 @@ static void print_help() {
     kprint("CALC, NOTES, FILES, EDITOR FILE\n");
     kprint("ECHO, UPPER, LOWER, REVERSE, LEN, ASCII, REPEAT, COUNT, RAND\n");
     kprint("ADD, SUB, MUL, DIV, MOD, REBOOT, HALT, END\n");
+    kprint("USERMODE / RING3       - Show user/kernel separation status\n");
 }
 
 static void command_echo(char *args) {
@@ -560,7 +562,7 @@ static void command_syscalls() {
     kprint("Mode: ");
     kprint(syscall_get_mode());
     kprint("\n");
-    kprint("Real int 0x80: disabled for now\n");
+    kprint("Real int 0x80: enabled for kernel-mode test\n");
     kprint("Dispatcher enabled: ");
 
     if (syscall_is_enabled()) {
@@ -595,8 +597,8 @@ static void command_syscall(char *args) {
     }
 
     if (strcmp_ignore_case(subcommand, "TEST") == 0) {
-        kprint("Testing safe syscall dispatcher...\n");
-        syscall_call1(SYS_PRINT, (u32)"SYS_PRINT: hello from safe syscall dispatcher\n");
+        kprint("Testing real int 0x80 syscall path...\n");
+        syscall_call1(SYS_PRINT, (u32)"SYS_PRINT: hello from real int 0x80\n");
 
         result = syscall_call0(SYS_GET_TICKS);
         kprint("SYS_GET_TICKS returned: ");
@@ -644,7 +646,7 @@ static void command_syscall(char *args) {
 
     if (strcmp_ignore_case(subcommand, "CLEAR") == 0) {
         syscall_call0(SYS_CLEAR);
-        kprint("Screen cleared by syscall dispatcher.\n");
+        kprint("Screen cleared by real int 0x80 syscall.\n");
         return;
     }
 
@@ -671,8 +673,8 @@ static void command_sysinfo() {
     kprint("Timer frequency: 50 Hz\n");
     kprint("Heap: v2 block allocator\n");
     kprint("Paging: identity paging enabled\n");
-    kprint("System calls: safe syscall dispatcher enabled\n");
-    kprint("Real int 0x80: disabled for now\n");
+    kprint("System calls: real int 0x80 enabled for kernel-mode tests\n");
+    kprint("Safe dispatcher: still available behind int 0x80 handler\n");
     kprint("RAM filesystem: enabled\n");
     kprint("Persistent storage: SimpleFS on QEMU IDE disk\n");
     kprint("App manager/editor/script runner: enabled\n");
@@ -690,7 +692,7 @@ static void command_memory() {
     kprint("\nHeap end: ");
     print_hex32(heap_get_end());
     kprint("\nPaging: identity mapped first 4 MB\n");
-    kprint("Syscall mode: safe kernel dispatcher\n");
+    kprint("Syscall mode: real int 0x80 kernel-mode test path\n");
 }
 
 static void command_memmap() {
@@ -2155,6 +2157,10 @@ void user_input(char *input) {
         command_math(command, args);
     } else if (strcmp_ignore_case(command, "REBOOT") == 0) {
         reboot();
+
+    } else if (strcmp_ignore_case(command, "USERMODE") == 0 ||
+           strcmp_ignore_case(command, "RING3") == 0) {
+    usermode_print_status();  
     } else {
         kprint(command);
         kprint(": command not found\n");
@@ -2174,6 +2180,7 @@ void main() {
     irq_install();
 
     init_syscalls();
+    init_usermode();
     init_heap();
     ramfs_init();
     init_paging();
@@ -2192,7 +2199,7 @@ void main() {
     kprint("Paging initialized.\n");
     kprint("Disk driver initialized.\n");
     kprint("SimpleFS initialized.\n");
-    kprint("Safe syscall dispatcher initialized.\n");
+    kprint("Real int 0x80 syscall path initialized.\n");
     kprint("App manager initialized.\n");
     kprint("Editor app initialized.\n");
     kprint("Script runner v2 initialized.\n");
